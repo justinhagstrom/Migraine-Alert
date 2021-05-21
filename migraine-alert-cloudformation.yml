@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Migraine-Alert"
+Resources:
+    LambdaFunction:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Description: ""
+            FunctionName: !Ref EventsRule
+            Handler: "lambda_function.lambda_handler"
+            Code: 
+                S3Bucket: !Sub "awslambda-${AWS::Region}-tasks"
+                S3Key: !Sub "/snapshots/${AWS::AccountId}/${EventsRule}-db189dd0-8b1d-43a6-adb2-638d5abc2ee1"
+                S3ObjectVersion: "Q2Y8lOFhmeWrtwc6Hl00PaCbgZ2B0Ovj"
+            MemorySize: 128
+            Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/service-role/${EventsRule}-role-41gxmf5y"
+            Runtime: "python3.8"
+            Timeout: 360
+            TracingConfig: 
+                Mode: "PassThrough"
+            Layers: 
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests:1"
+
+    LambdaPermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            Action: "lambda:InvokeFunction"
+            FunctionName: !GetAtt LambdaFunction.Arn
+            Principal: "events.amazonaws.com"
+            SourceArn: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${LambdaFunction}"
+
+    EventsRule:
+        Type: "AWS::Events::Rule"
+        Properties:
+            Name: !Ref DynamoDBTable
+            ScheduleExpression: "cron(29 13,15,17,19,21,23,1,3 * * ? *)"
+            State: "ENABLED"
+            Targets: 
+              - 
+                Arn: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${DynamoDBTable}"
+                Id: "Id803bf245-a7ab-4bbf-ba31-4b2b389cdc86"
+            EventBusName: "default"
+
+    SNSTopic:
+        Type: "AWS::SNS::Topic"
+        Properties:
+            DisplayName: ""
+            TopicName: "weather"
+
+    SNSTopicPolicy:
+        Type: "AWS::SNS::TopicPolicy"
+        Properties:
+            PolicyDocument: !Sub "{\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\",\"SNS:Receive\"],\"Resource\":\"${SNSTopic}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"${AWS::AccountId}\"}}}]}"
+            Topics: 
+              - !Ref SNSTopic
+
+    SecretsManagerSecret:
+        Type: "AWS::SecretsManager::Secret"
+        Properties:
+            Name: "openweathermap"
+            SecretString: "{\"appid\":\"\"}"
+
+    DynamoDBTable:
+        Type: "AWS::DynamoDB::Table"
+        Properties:
+            AttributeDefinitions: 
+              - 
+                AttributeName: "timestamp"
+                AttributeType: "S"
+              - 
+                AttributeName: "zipCode"
+                AttributeType: "S"
+            BillingMode: "PAY_PER_REQUEST"
+            TableName: "barometricPressure"
+            KeySchema: 
+              - 
+                AttributeName: "zipCode"
+                KeyType: "HASH"
+              - 
+                AttributeName: "timestamp"
+                KeyType: "RANGE"
+
+    LambdaLayerVersion:
+        Type: "AWS::Lambda::LayerVersion"
+        Properties:
+            Description: ""
+            CompatibleRuntimes: 
+              - "python3.8"
+              - "python3.7"
+            LayerName: "requests"
+            Content: 
+                S3Bucket: !Sub "awslambda-${AWS::Region}-layers"
+                S3Key: !Sub "/snapshots/${AWS::AccountId}/requests-02fe4c05-e45d-45f6-92aa-3518189a21b7"
+
